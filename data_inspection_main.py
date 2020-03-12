@@ -1430,7 +1430,7 @@ class Inspection():
         conn.commit()
         cursor.close()
         conn.close()
-        print("插入成功了")
+        print("插入成功了")   #hello     hello
         pass
     def multiThreadInsertByDistrictId(self,CITY_ID='',PARTITION=PARTITION_IN_CLASS):
         PARTITION=self.PARTITION_IN_CLASS
