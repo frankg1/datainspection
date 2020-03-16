@@ -573,7 +573,7 @@ class Inspection():
         self.insert(biglist)
         #for结束了
         tb=time.time()
-        print('thread over! ','num:',len(AddressList),'time costs:',tb-ta)
+        print('thread over! ','num:',len(biglist),'time costs:',tb-ta)
         del cursor
         conn.close()
 
@@ -735,17 +735,10 @@ class Inspection():
                     insertlis.append(adderss_lat_tp)
                     insertlis.append(companyuk)
                     insertlis.append(azimuth)
-                    insertlis.append(cellid)
                     insertlis.append(mr_get_lon)
                     insertlis.append(mr_get_lat)
-                    insertlis.append(address)
-                    insertlis.append(address_lon_tp)
-                    insertlis.append(adderss_lat_tp)
-                    insertlis.append(mr_get_lon)
-                    insertlis.append(mr_get_lat)
+
                     insertlis.append(distance_get)
-                    insertlis.append(ant_azimuth)
-                    insertlis.append(ant_azimuth_get)
                     insertlis.append(ant_azimuth_get)
                     insertlis.append(ant_azimuth_minus)
 
@@ -754,6 +747,8 @@ class Inspection():
                 querylist=cursor.fetchmany(100)
             i+=1
         self.insert(biglist)
+        print('big list')
+        print(biglist)
         tb=time.time()
         print('thread over! ','num:',len(AddressList),'time costs:',tb-ta)
         del cursor
@@ -1552,7 +1547,7 @@ class Inspection():
             querylist=cursor.fetchmany(100)
         return lis
     def getdistrictAddressoroid(self):
-        sql="select distinct enb  from V_GIS_F_L_C_CELL_VER where enb is not null "
+        sql="select distinct enb  from V_GIS_F_L_C_CELL_VER where enb is not null"
         conn = cx_Oracle.connect(orcConfig)
         cursor = conn.cursor()
         cursor.execute(sql)
@@ -1576,36 +1571,12 @@ class Inspection():
             rooms=rooms[fennum+1:len(rooms)]
         with  futures.ThreadPoolExecutor(max_workers=int(self.processcount)) as excutor:
               excutor.map(self.getVirtualSiteOfHZ,bigaddresslist )
+        # self.getVirtualSiteOfHZ(rooms)
+
         pass
-        # PARTITION=self.PARTITION_IN_CLASS
-        # PARTITION=str(PARTITION)
-        # rooms=self.getdistrictAddressoroid(district_id,2)   #list room
-        # fennum=int((len(rooms)/int(self.processcount))+3)
-        # bigaddresslist=[]
-        # PLIS=[]
-        # while len(rooms):
-        #     bigaddresslist.append(rooms[0:fennum])
-        #     PLIS.append(PARTITION)
-        #     rooms=rooms[fennum+1:len(rooms)]
-        #
-        #
-        #
-        # with  futures.ThreadPoolExecutor(max_workers=int(self.processcount)) as excutor:
-        #       excutor.map(self.getVirtualSite,bigaddresslist,PLIS )
-        #
-        # addressList=self.getdistrictAddressoroid(district_id,1)   #
-        # fennum=(len(addressList)/int(self.processcount))+3
-        # fennum=int(fennum)
-        # bigaddresslist=[]
-        # PLIS=[]
-        # while len(addressList):
-        #     bigaddresslist.append(addressList[0:fennum])
-        #     PLIS.append(PARTITION)
-        #     addressList=addressList[fennum+1:len(addressList)]
-        #
-        # with  futures.ThreadPoolExecutor(max_workers=int(self.processcount)) as excutor:
-        #       excutor.map(self.getVirtualSiteOfHZ,bigaddresslist,PLIS )
+
     def insert(self,lis):
+        print(lis)
         lis1=[]
         for i in lis:
 
@@ -1613,6 +1584,8 @@ class Inspection():
                 i[j]=str(i[j])
             i=tuple(i)
             lis1.append(i)
+        print("元祖： ")
+        print(lis1)
         conn = cx_Oracle.connect(orcConfig)
         cursor = conn.cursor()
         sql="insert into "+self.targettable+"(ENB,CELL_ID,LONGITUDE,LATITUDE,COMPANY_UK,AZIMUTH,REC_LONGITUDE,REC_LATITUDE,APART_DIS,REC_AZIMUTH,APART_AZIMUTH) VALUES(:ENB,:CELL_ID,:LONGITUDE,:LATITUDE,:COMPANY_UK,:AZIMUTH,:REC_LONGITUDE,:REC_LATITUDE,:APART_DIS,:REC_AZIMUTH,:APART_AZIMUTH)"
@@ -1676,11 +1649,7 @@ def run():
     print('date is ',d)
     ins=Inspection(d)
     ins.getAndInsert()
-    # for j in range(len(ins.district_id_list)):
-    #     for i in ins.district_id_list[j][1]:
-    #         ins.getAndInsert(i)
-    #     pass
-    # ins.deleterepeat()
+
 if __name__=="__main__":
     try:
         print('begin!')
@@ -1689,4 +1658,4 @@ if __name__=="__main__":
         run()
     except Exception as e:
         print(e)
-        input()
+        # input()
