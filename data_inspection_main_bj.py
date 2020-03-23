@@ -257,7 +257,7 @@ class Inspection():
                     azimuth=row[5]
                     try:
                         if(float(distance_get)<0.1):
-                            cp=self.getrsrpmaxfromonecell(enb,cellid)   #如何得到rsrp最强的点？
+                            cp=self.getnummaxfromonecell(enb,cellid)   #如何得到rsrp最强的点？
                             ant_azimuth_get=str(round(float(calc_angle([[float(lon),float(lat)],cp])),5))
                             ant_azimuth_minus=str(round(float(float(ant_azimuth_get)-float(azimuth)),5))
 
@@ -379,6 +379,80 @@ class Inspection():
             except Exception as e:
                 print(e)
                 return None
+
+    def getnummaxfromonecell(self,enb,cellid):
+
+        conn = cx_Oracle.connect(orcConfig)
+        cursor = conn.cursor()
+        sql="select ENB ,CELL_ID,GRID_ID,GRID_LONGITUDE,GRID_LATITUDE,RSRP,POINTS from( select ENB ,CELL_ID,GRID_ID,GRID_LONGITUDE,GRID_LATITUDE,RSRP,POINTS,count(1) over(partition by CELL_ID ) GR_COUNT from( select floor(cell_id/256) ENB,CELL_ID,GRID_ID,substr(GRID_ID,0,instr(grid_id,'|')-1)*0.00001+0.00001*10 GRID_LONGITUDE, substr(GRID_ID, instr(grid_id,'|')+1,length(grid_id))*0.00001-0.00001*10 GRID_LATITUDE,AVG_RSRP RSRP,COUNTS POINTS from  "+self.table+" where cell_id in(select CELL_ID from NWOM.V_GIS_F_L_C_CELL_VER) and AVG_RSRP>-85 and COUNTS>20 )where ENB="+enb+" and cell_id="+cellid+" ) where GR_COUNT>10"
+        cursor.execute(sql)
+        querylist = cursor.fetchmany(100)
+        rtlist=[]
+
+        lon=0.0
+        lat=0.0
+
+        while querylist:
+            for row in querylist:
+                #得到小区的经纬度，以及有效栅格数据
+                tmplist=[]
+                tmplist.append(float(row[3]))   #经度加进去
+                tmplist.append(float(row[4]))   #纬度加进去
+                rtlist.append(tmplist)
+            querylist = cursor.fetchmany(100)
+        if len(rtlist)==0:
+            #print(i,' ',OID,'此小区没有关联栅格，可能由于本日期中无此小区缘故！')
+            return None
+        #while 结束了，得到了所有的有效栅格的坐标 以及小区的工参坐标
+
+        X=np.array(rtlist)
+        lon=float(lon)
+        lat=float(lat)
+        #开始聚簇这个小区的有效栅格的坐标
+        dbscan=DBSCAN(eps=0.0008, min_samples=20)
+        db=dbscan.fit(X)
+        core=db.core_sample_indices_
+        Xcore=X[core]
+        labels=db.labels_
+        n_clusters=len(set(labels))-(1 if -1 in labels else 0)
+        if len(Xcore)==0:
+            #无聚类
+            return None
+        dic={}
+        for i in range(n_clusters):
+            dic[i]=len(list(X[labels==i].flatten()))/2
+        #在字典中找出最大的k   v 是长度
+        ma=0
+        for k,v in dic.items():
+            if v>ma:
+                ma=v
+        maxlis=[]
+        for k,v in dic.items():
+            if int(v)==int(ma):
+                maxlis.append(k)
+        #先得到最大的簇的那些点
+        bigcu=[]
+        for i in maxlis:
+            bigcu+=list(X[labels==i].flatten())
+        zlis=[]
+        for i in range(0,len(bigcu),2):
+            tmp=[]
+            lon1=bigcu[i]
+            lat1=bigcu[i+1]
+            tmp.append(lon1)
+            tmp.append(lat1)
+            zlis.append(tmp)
+        #zlis就是最终用来算重心点的
+        #对最大的簇们求重心点
+        try:
+            result = convex_hull(np.array(zlis))
+            result=np.array(result)
+            weightpoint=getWeightPoint(result)
+            return weightpoint
+        except Exception as e:
+            print(e)
+            return getMeanPoint(np.array(zlis))
+
     def getrsrpmaxfromonecellwithtab(self,enb,cellid,tab1,tab2):
 
         conn = cx_Oracle.connect(orcConfig)
@@ -456,7 +530,20 @@ class Inspection():
             except Exception as e:
                 print(e)
                 return None
+    def getdistrictAddressoroid(self):
+        sql="select distinct enb  from V_GIS_F_L_C_CELL_VER where enb is not null "
+        conn = cx_Oracle.connect(orcConfig)
+        cursor = conn.cursor()
+        cursor.execute(sql)
+        querylist = cursor.fetchmany(100)
+        lis=[]
+        while querylist:
+            for row in querylist:
+                lis.append(row[0])
+                pass
 
+            querylist=cursor.fetchmany(100)
+        return lis
     def getAndInsert(self):
         rooms=self.getdistrictAddressoroid()   #list room
         fennum=int((len(rooms)/int(self.processcount))+3)
@@ -614,13 +701,14 @@ class Inspection():
 def run():
 
     now_time = datetime.datetime.now()
-    yes_time = now_time + datetime.timedelta(days=-23)
+    yes_time = now_time + datetime.timedelta(days=-26)
     d = yes_time.strftime('%Y%m%d')
     print('date is ',d)
     ins=Inspection(d)
     ins.d=d
     ins.table='MDT_CELL_GRID_'+str(d)
     ins.getAndInsert()
+    # ins.getVirtualSiteOfHZ(['90515'])
 
 
 if __name__=="__main__":
