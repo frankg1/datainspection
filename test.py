@@ -1,4 +1,5 @@
-#213dsadasdasdas
+#-*- coding: utf-8 -*-
+import numpy as np
 
-s='123'
-print(int(s))
+arr=[12 ,50 ,19]
+print(np.var(arr)/np.mean(arr))
