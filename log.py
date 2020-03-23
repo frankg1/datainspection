@@ -23,11 +23,10 @@ setting = {
 class Log(object):
     ''' '''
     def __init__(self, name):
-        #self.path = setting['logpath']+'_LOG'  #log
-        #self.path="E:\ArcGisData\LTE_CellDirect\LTE_CELL_DIRECT_LOG"
-        self.path=os.abspath()+'LOG';
-        #E:\ArcGisData\LTE_CellDirect\LTE_CELL_DIRECT_DAY_LOG
-        #print 'tell'
+        self.path=os.path.abspath('.')+'\\LOG';
+        if not os.path.exists(self.path):
+            os.makedirs(self.path)
+
         self.filename = setting['filename']   #time.log
         self.name = name  # test
         self.logger = logging.getLogger(self.name)

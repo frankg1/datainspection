@@ -16,6 +16,7 @@ from getangle import calc_angle
 from multiprocessing import cpu_count
 from concurrent import futures
 import time
+from log import Log
 '''
 部署步骤
 1 改orcconfig
@@ -130,6 +131,7 @@ class Inspection():
             querylist = cursor.fetchmany(100)
         return lon,lat
     def getVirtualSiteOfHZ(self,AddressList):
+        log=Log('running getVirtualSiteOfHZ')
         #北京的得到宏站
         ta=time.time()
 
@@ -149,7 +151,7 @@ class Inspection():
             #     print('没有合适的小区这个站址：',address)
             #     continue
             if not self.基站符合条件(address):
-                print('基站不符合初始条件判断')
+                # print('基站不符合初始条件判断')
                 continue
 
 
@@ -205,31 +207,35 @@ class Inspection():
             except Exception as e:
                 print('错误所在的行号：', e.__traceback__.tb_lineno)
                 print('错误信息', e)
+
+                pass
             if len(Xcore)==0:
-                print(' ',address,':小区没有核心点，有效栅格个数太少，仅有',len(X),'个')
+                # print(' ',address,':小区没有核心点，有效栅格个数太少，仅有',len(X),'个')
                 address_lon_tp=lon
                 adderss_lat_tp=lat
                 mr_get_lon=''
                 mr_get_lat=''
                 distance_get='栅格少'
+                log.debug(address+'  cell has no core point  or valid grids are too less ,only '+str(len(X)))
                 continue
             else:
                 try:
                     result = convex_hull(Xcore)
                     result=np.array(result)
                     weightpoint=getWeightPoint(result)
-                    print(i,' ',address,'基站计算结果，偏差为： ',haversine(weightpoint[0],weightpoint[1],lon,lat))
+                    # print(i,' ',address,'基站计算结果，偏差为： ',haversine(weightpoint[0],weightpoint[1],lon,lat))
                     address_lon_tp=lon
                     adderss_lat_tp=lat
                     mr_get_lon=str(round(float(weightpoint[0]),5))
                     mr_get_lat=str(round(float(weightpoint[1]),5))
                     distance_get=str(round(float(haversine(weightpoint[0],weightpoint[1],lon,lat)),5))
                 except Exception as e:
-                    print('错误所在的行号：', e.__traceback__.tb_lineno)
-                    print('错误信息', e)
+                    # print('错误所在的行号：', e.__traceback__.tb_lineno)
+                    # print('错误信息', e)
                     weightpoint=getMeanPoint(Xcore)
-                    print(' ',address,'核心点数量：',len(Xcore),'计算凸包失败了,mean值替换重心点')
-                    print(' ',address,'小区计算结果，偏差为： ',haversine(weightpoint[0],weightpoint[1],lon,lat))
+                    # print(' ',address,'核心点数量：',len(Xcore),'计算凸包失败了,mean值替换重心点')
+                    # print(' ',address,'小区计算结果，偏差为： ',haversine(weightpoint[0],weightpoint[1],lon,lat))
+                    log.debug(' '+address+'core point nums：'+str(len(Xcore))+'calculate outpackage failed mean point subtituded')
                     address_lon_tp=lon
                     adderss_lat_tp=lat
                     mr_get_lon=weightpoint[0]
@@ -270,10 +276,12 @@ class Inspection():
 
 
                     except Exception as e1:
-                        print('错误所在的行号：', e1.__traceback__.tb_lineno)
-                        print('单个小区核心点计算出错，错误信息', e1)
+                        # print('错误所在的行号：', e1.__traceback__.tb_lineno)
+                        # print('单个小区核心点计算出错，错误信息', e1)
                         ant_azimuth_get='none'
                         ant_azimuth_minus='none'
+                        log.error(str(e))
+                        log.error(str(e1.__traceback__.tb_lineno))
                         pass
 
 
@@ -606,6 +614,7 @@ class Inspection():
         pass
 
     def 基站符合条件(self,基站ID):
+        log=Log('station not match '+基站ID)
         conn = cx_Oracle.connect(orcConfig)
         cursor = conn.cursor()
         sql="SELECT ENB,CELL_ID,COUNT(CELL_ID) AS CELLCNT,GR_COUNT FROM (select ENB, CELL_ID, count(1) over(partition by ENB) GR_COUNT from (select floor(cell_id / 256) ENB, CELL_ID from NWOM.MDT_CELL_GRID_20200226 where cell_id in (select CELL_ID from NWOM.V_GIS_F_L_C_CELL_VER) and AVG_RSRP > -110 and COUNTS > 20) where ENB = "+基站ID+") group by ENB,CELL_ID,GR_COUNT"
@@ -619,15 +628,19 @@ class Inspection():
                 小区栅格数.append(int(row[2]))
                 基站总栅格数=int(row[3])
                 if int(row[2])<10:
+                    log.debug('one cell of station less than 10 grids')
                     return False
             querylist = cursor.fetchmany(100)
         #此处进行判断  是否符合条件
         if 基站总栅格数<30:
+            log.debug('one cell total less than 30 grids')
             return False
         if len(小区栅格数)<3:
+            log.debug('one cell total less than 3 cells')
             return False
         #设定一个条件使得，小区的栅格数不能相差太大了 变异系数的阈值为  ：  cv=8.0
         if np.var(基站总栅格数)/np.mean(基站总栅格数)>8.0:
+            log.debug('cv is bigger than 8.0')
             return False
 
         return True
