@@ -41,7 +41,7 @@ class Inspection():
     workspace=abspath
     shpname = 'shpname'
     cpucount = int(cpu_count())
-    processcount = int(50)
+    processcount = int(12)
     locallist=[]
     localoidlist=[]
     #todo  这个地方需要修改
@@ -132,8 +132,8 @@ class Inspection():
                 pass
             querylist = cursor.fetchmany(100)
         return lon,lat
-    def getVirtualSiteOfHZ(self,AddressList):
-        log=Log('running getVirtualSiteOfHZ')
+    def getVirtualSiteOfHZ(self,AddressList,thread_index):
+        log=Log('running getVirtualSiteOfHZ th'+str(thread_index))
         log.debug('length list: '+str(len(AddressList)))
         #北京的得到宏站
         ta=time.time()
@@ -216,7 +216,7 @@ class Inspection():
                 mr_get_lon=''
                 mr_get_lat=''
                 distance_get='栅格少'
-                log.debug(address+'  cell has no core point  or valid grids are too less ,only '+str(len(X)))
+                log.debug(address+'  cell has no core point  or valid grids are too less ,only '+str(len(X))+'  th'+str(thread_index))
                 continue
             else:
                 try:
@@ -235,7 +235,7 @@ class Inspection():
                     weightpoint=getMeanPoint(Xcore)
                     # print(' ',address,'核心点数量：',len(Xcore),'计算凸包失败了,mean值替换重心点')
                     # print(' ',address,'小区计算结果，偏差为： ',haversine(weightpoint[0],weightpoint[1],lon,lat))
-                    log.debug(' '+address+'core point nums：'+str(len(Xcore))+'calculate outpackage failed mean point subtituded')
+                    log.debug(' '+address+'core point nums：'+str(len(Xcore))+'calculate outpackage failed mean point subtituded  th'+str(thread_index))
                     address_lon_tp=lon
                     adderss_lat_tp=lat
                     mr_get_lon=weightpoint[0]
@@ -244,10 +244,7 @@ class Inspection():
                     distance_get=str(round(float(haversine(weightpoint[0],weightpoint[1],lon,lat)),5))
             #至此  获取基站的经纬度完成了 需要获取每个小区各自的经纬度和方向角
 
-
-
             sql1="select distinct ENB,CELL_ID,LONGITUDE,LATITUDE,COMPANY_UK,AZIMUTH  from V_GIS_F_L_C_CELL_VER where enb="+address
-
             cursor.execute(sql1)
             querylist = cursor.fetchmany(100)
 
@@ -264,7 +261,7 @@ class Inspection():
                     try:
 
                         if(float(distance_get)<0.5):
-                            cp=self.getnummaxfromonecell(enb,cellid)   #如何得到rsrp最强的点？
+                            cp=self.getnummaxfromonecell(enb,cellid,thread_index)   #如何得到rsrp最强的点？
                             ant_azimuth_get=str(round(float(calc_angle([[float(lon),float(lat)],cp])),5))
                             ant_azimuth_minus=str(round(float(float(ant_azimuth_get)-float(azimuth)),5))
                             # print('info 1: ',cellid,'  ',ant_azimuth_get)
@@ -277,7 +274,7 @@ class Inspection():
                             ant_azimuth_get='1000'
                             ant_azimuth_minus=''
                             # print('info 2: ',cellid,'  ',ant_azimuth_get)
-                        # log.debug("angle done")
+                        log.debug("angle done   th"+str(thread_index))
 
 
                     except Exception as e1:
@@ -285,7 +282,7 @@ class Inspection():
                         # print('单个小区核心点计算出错，错误信息', e1)
                         ant_azimuth_get='2000'
                         ant_azimuth_minus=''
-                        log.error("exception: "+str(e1))
+                        # log.debug("exception: "+str(e1))
                         # log.error(str(e1.__traceback__.tb_lineno))
                         pass
 
@@ -315,7 +312,7 @@ class Inspection():
         # print(biglist)
         tb=time.time()
         # print('thread over! ','num:',len(AddressList),'time costs:',tb-ta)
-        log.debug('thread over')
+        log.debug('thread over th'+str(thread_index))
         log.close()
         del cursor
         conn.close()
@@ -397,12 +394,11 @@ class Inspection():
             except Exception as e:
                 print(e)
                 return None
-
-    def getnummaxfromonecell(self,enb,cellid):
-        log=Log("inside cal azimuth!")
+    def getNumMaxFromOneCellWithoutHighRestrict(self,enb,cellid,thread_index):
+        log=Log("inside cal azimuth! th"+str(thread_index)+' cellid: '+str(cellid))
         conn = cx_Oracle.connect(orcConfig)
         cursor = conn.cursor()
-        sql="select ENB ,CELL_ID,GRID_ID,GRID_LONGITUDE,GRID_LATITUDE,RSRP,POINTS from( select ENB ,CELL_ID,GRID_ID,GRID_LONGITUDE,GRID_LATITUDE,RSRP,POINTS,count(1) over(partition by CELL_ID ) GR_COUNT from( select floor(cell_id/256) ENB,CELL_ID,GRID_ID,substr(GRID_ID,0,instr(grid_id,'|')-1)*0.00001+0.00001*10 GRID_LONGITUDE, substr(GRID_ID, instr(grid_id,'|')+1,length(grid_id))*0.00001-0.00001*10 GRID_LATITUDE,AVG_RSRP RSRP,COUNTS POINTS from  "+self.table+" where cell_id in(select CELL_ID from NWOM.V_GIS_F_L_C_CELL_VER) and AVG_RSRP>-85 and COUNTS>20 )where ENB="+enb+" and cell_id="+cellid+" ) where GR_COUNT>10"
+        sql="select ENB ,CELL_ID,GRID_ID,GRID_LONGITUDE,GRID_LATITUDE,RSRP,POINTS from( select ENB ,CELL_ID,GRID_ID,GRID_LONGITUDE,GRID_LATITUDE,RSRP,POINTS,count(1) over(partition by CELL_ID ) GR_COUNT from( select floor(cell_id/256) ENB,CELL_ID,GRID_ID,substr(GRID_ID,0,instr(grid_id,'|')-1)*0.00001+0.00001*10 GRID_LONGITUDE, substr(GRID_ID, instr(grid_id,'|')+1,length(grid_id))*0.00001-0.00001*10 GRID_LATITUDE,AVG_RSRP RSRP,COUNTS POINTS from  "+self.table+" where cell_id in(select CELL_ID from NWOM.V_GIS_F_L_C_CELL_VER) and AVG_RSRP>-110 and COUNTS>20 )where ENB="+enb+" and cell_id="+cellid+" ) where GR_COUNT>10"
         cursor.execute(sql)
         querylist = cursor.fetchmany(100)
         rtlist=[]
@@ -420,7 +416,7 @@ class Inspection():
             querylist = cursor.fetchmany(100)
         if len(rtlist)==0:
             #print(i,' ',OID,'此小区没有关联栅格，可能由于本日期中无此小区缘故！')
-            log.debug("小区没有关联栅格")
+            log.debug("小区真的没有关联栅格 th"+str(thread_index))
             return None
         #while 结束了，得到了所有的有效栅格的坐标 以及小区的工参坐标
 
@@ -428,7 +424,8 @@ class Inspection():
         lon=float(lon)
         lat=float(lat)
         #开始聚簇这个小区的有效栅格的坐标
-        dbscan=DBSCAN(eps=0.0008, min_samples=20)
+
+        dbscan=DBSCAN(eps=0.0008, min_samples=5)
         db=dbscan.fit(X)
         core=db.core_sample_indices_
         Xcore=X[core]
@@ -436,7 +433,7 @@ class Inspection():
         n_clusters=len(set(labels))-(1 if -1 in labels else 0)
         if len(Xcore)==0:
             #无聚类
-            log.debug("小区核心点数量 是0")
+            # log.debug("小区核心点数量 是0")
             return None
         dic={}
         for i in range(n_clusters):
@@ -471,7 +468,85 @@ class Inspection():
             return weightpoint
         except Exception as e:
             # print(e)
-            log.debug(str(e)+"  计算小区核心点 出错  直接返回均值点吧")
+            # log.debug("  计算小区核心点 出错  直接返回均值点吧")
+            return getMeanPoint(np.array(zlis))
+
+    def getnummaxfromonecell(self,enb,cellid,thread_index):
+        log=Log("inside cal azimuth!  th"+str(thread_index))
+        conn = cx_Oracle.connect(orcConfig)
+        cursor = conn.cursor()
+        sql="select ENB ,CELL_ID,GRID_ID,GRID_LONGITUDE,GRID_LATITUDE,RSRP,POINTS from( select ENB ,CELL_ID,GRID_ID,GRID_LONGITUDE,GRID_LATITUDE,RSRP,POINTS,count(1) over(partition by CELL_ID ) GR_COUNT from( select floor(cell_id/256) ENB,CELL_ID,GRID_ID,substr(GRID_ID,0,instr(grid_id,'|')-1)*0.00001+0.00001*10 GRID_LONGITUDE, substr(GRID_ID, instr(grid_id,'|')+1,length(grid_id))*0.00001-0.00001*10 GRID_LATITUDE,AVG_RSRP RSRP,COUNTS POINTS from  "+self.table+" where cell_id in(select CELL_ID from NWOM.V_GIS_F_L_C_CELL_VER) and AVG_RSRP>-85 and COUNTS>20 )where ENB="+enb+" and cell_id="+cellid+" ) where GR_COUNT>10"
+        cursor.execute(sql)
+        querylist = cursor.fetchmany(100)
+        rtlist=[]
+
+        lon=0.0
+        lat=0.0
+
+        while querylist:
+            for row in querylist:
+                #得到小区的经纬度，以及有效栅格数据
+                tmplist=[]
+                tmplist.append(float(row[3]))   #经度加进去
+                tmplist.append(float(row[4]))   #纬度加进去
+                rtlist.append(tmplist)
+            querylist = cursor.fetchmany(100)
+        if len(rtlist)==0:
+            #print(i,' ',OID,'此小区没有关联栅格，可能由于本日期中无此小区缘故！')
+            # log.debug("小区没有关联栅格")
+            return self.getNumMaxFromOneCellWithoutHighRestrict(enb,cellid,thread_index)
+
+        #while 结束了，得到了所有的有效栅格的坐标 以及小区的工参坐标
+
+        X=np.array(rtlist)
+        lon=float(lon)
+        lat=float(lat)
+        #开始聚簇这个小区的有效栅格的坐标
+        #TODO 这个地方有点问题 可以优化一波
+        dbscan=DBSCAN(eps=0.0008, min_samples=5)
+        db=dbscan.fit(X)
+        core=db.core_sample_indices_
+        Xcore=X[core]
+        labels=db.labels_
+        n_clusters=len(set(labels))-(1 if -1 in labels else 0)
+        if len(Xcore)==0:
+            #无聚类
+            log.debug("小区核心点数量 是0  th"+str(thread_index))
+            return None
+        dic={}
+        for i in range(n_clusters):
+            dic[i]=len(list(X[labels==i].flatten()))/2
+        #在字典中找出最大的k   v 是长度
+        ma=0
+        for k,v in dic.items():
+            if v>ma:
+                ma=v
+        maxlis=[]
+        for k,v in dic.items():
+            if int(v)==int(ma):
+                maxlis.append(k)
+        #先得到最大的簇的那些点
+        bigcu=[]
+        for i in maxlis:
+            bigcu+=list(X[labels==i].flatten())
+        zlis=[]
+        for i in range(0,len(bigcu),2):
+            tmp=[]
+            lon1=bigcu[i]
+            lat1=bigcu[i+1]
+            tmp.append(lon1)
+            tmp.append(lat1)
+            zlis.append(tmp)
+        #zlis就是最终用来算重心点的
+        #对最大的簇们求重心点
+        try:
+            result = convex_hull(np.array(zlis))
+            result=np.array(result)
+            weightpoint=getWeightPoint(result)
+            return weightpoint
+        except Exception as e:
+            # print(e)
+            # log.debug("  计算小区核心点 出错  直接返回均值点吧")
             return getMeanPoint(np.array(zlis))
 
     def getrsrpmaxfromonecellwithtab(self,enb,cellid,tab1,tab2):
@@ -552,7 +627,7 @@ class Inspection():
                 print(e)
                 return None
     def getdistrictAddressoroid(self):
-        sql="select distinct enb  from V_GIS_F_L_C_CELL_VER where enb is not null  and   rownum<10000"
+        sql="select distinct enb  from V_GIS_F_L_C_CELL_VER where enb is not null  "
         conn = cx_Oracle.connect(orcConfig)
         cursor = conn.cursor()
         cursor.execute(sql)
@@ -570,11 +645,12 @@ class Inspection():
         fennum=int((len(rooms)/int(self.processcount))+3)
         bigaddresslist=[]
         PLIS=[]
+        index_list=[i for  i in range(self.processcount)]
         while len(rooms):
             bigaddresslist.append(rooms[0:fennum])
             rooms=rooms[fennum+1:len(rooms)]
         with  futures.ThreadPoolExecutor(max_workers=int(self.processcount)) as excutor:
-              excutor.map(self.getVirtualSiteOfHZ,bigaddresslist )
+              excutor.map(self.getVirtualSiteOfHZ,bigaddresslist,index_list )
         # self.getVirtualSiteOfHZ(rooms)
 
         pass
@@ -630,6 +706,7 @@ class Inspection():
         print('去重完毕')
         pass
 
+    #TODO  这个地方修改了 严格基站限制
     def 基站符合条件(self,基站ID):
         log=Log('station not match '+基站ID)
         conn = cx_Oracle.connect(orcConfig)
@@ -644,25 +721,25 @@ class Inspection():
             for row in querylist:
                 小区栅格数.append(int(row[2]))
                 基站总栅格数=int(row[3])
-                if int(row[2])<10:
-                    log.debug('one cell of station less than 10 grids')
-                    log.close()
-                    return False
+                # if int(row[2])<10:
+                #     log.debug('one cell of station less than 10 grids')
+                #     log.close()
+                #     return False
             querylist = cursor.fetchmany(100)
         #此处进行判断  是否符合条件
-        if 基站总栅格数<30:
-            log.debug('one cell total less than 30 grids')
-            log.close()
-            return False
+        # if 基站总栅格数<30:
+        #     log.debug('one cell total less than 30 grids')
+        #     log.close()
+        #     return False
         if len(小区栅格数)<3:
             log.debug('one cell total less than 3 cells')
             log.close()
             return False
         #设定一个条件使得，小区的栅格数不能相差太大了 变异系数的阈值为  ：  cv=8.0
-        if np.var(基站总栅格数)/np.mean(基站总栅格数)>8.0:
-            log.debug('cv is bigger than 8.0')
-            log.close()
-            return False
+        # if np.var(基站总栅格数)/np.mean(基站总栅格数)>8.0:
+        #     log.debug('cv is bigger than 8.0')
+        #     log.close()
+        #     return False
         log.debug('station passed!')
         log.close()
         return True
@@ -747,11 +824,9 @@ def run():
     ins.getAndInsert()
     # ins.getVirtualSiteOfHZ(['71891'])
 
-
-
 if __name__=="__main__":
     try:
-        print('begin!')
+        print('begin!')   #13376364844
         # print (os.getcwd())
         # os.chdir(r'D:\datainspection')
         run()
